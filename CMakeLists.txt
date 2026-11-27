@@ -28,7 +28,15 @@ file(GLOB_RECURSE MAIN_SOURCES CONFIGURE_DEPENDS
 sdl3plus_add_game(${PROJECT_NAME}
     SOURCES
         ${MAIN_SOURCES}
+    
+#    ICON
+#        resources/icon.png
+    STUDIO
+        lohksstudiosworks
 )
+
+sdl3plus_add_android_key_file(${PROJECT_NAME} resources/release-key.jks)
+
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -43,3 +51,4 @@ else()
 endif()
 
 b_embed(${PROJECT_NAME} "resources/config.json")
+b_embed(${PROJECT_NAME} "resources/calibri_fix.ttf")

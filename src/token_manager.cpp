@@ -15,19 +15,14 @@ bool check_response(const httplib::Result& response, int expected_status, const 
 
 
 TokenManager::TokenManager(Configuration& conf) :
-    m_conf(conf) {
-    
-}
+    m_conf(conf) 
+{}
 
 bool TokenManager::connect() {
     if (!(m_good = try_refresh())) {
         std::cout << "Cached token could not be used. Trying fresh..." << std::endl;
         m_good = authenticate();
     }
-    
-    if (m_good)
-        m_conf.save();
-
     return m_good;
 }
 
@@ -45,27 +40,25 @@ bool TokenManager::fetch_users() {
         return false;
     }
 
-    if (!m_conf.get_channel_id().empty()) {
-        std::cout << "Cached id found. Skipping fetch of target user ID." << std::endl;
-    }
-    else if (const auto res = fetch_user(false); !res.empty()) {
+    if (const auto res = fetch_user(false); !res.empty()) {
         std::cout << "Got target channel ID: " << res << std::endl;
-        m_conf.set_channel_id(res);
+        m_conf.write_cache().channel_id = res;
     }
     else {
         std::cout << "Failed to fetch target channel ID." << std::endl;
+        m_conf.write_cache().channel_id.clear();
+        m_conf.write_cache().self_id.clear();
         return false;
     }
 
-    if (!m_conf.get_self_id().empty()) {
-        std::cout << "Cached id found. Skipping fetch of self ID." << std::endl;
-    }
-    else if (const auto res = fetch_user(true); !res.empty()) {
+    if (const auto res = fetch_user(true); !res.empty()) {
         std::cout << "Got self ID: " << res << std::endl;
-        m_conf.set_self_id(res);
+        m_conf.write_cache().self_id = res;
     }
     else {
         std::cout << "Failed to fetch self ID." << std::endl;
+        m_conf.write_cache().channel_id.clear();
+        m_conf.write_cache().self_id.clear();
         return false;
     }
 
@@ -73,13 +66,13 @@ bool TokenManager::fetch_users() {
 }
 
 std::string TokenManager::fetch_user(const bool self) {
-    const std::string username = self ? "" : m_conf.get_channel_name();
+    const std::string username = self ? "" : m_conf.read_cache().channel_name;
 
     httplib::Client client("https://api.twitch.tv");
 
     httplib::Headers headers = {
-        {"Client-ID", m_conf.get_client_id()},
-        {"Authorization", "Bearer " + m_access_token}
+        {"Client-ID", m_conf.read_conf().client_id},
+        {"Authorization", "Bearer " + m_conf.read_cache().access_token}
     };
 
     const std::string endpoint =
@@ -115,10 +108,6 @@ std::string TokenManager::fetch_user(const bool self) {
     return {};
 }
 
-const std::string& TokenManager::get_token() const {
-    return m_access_token;
-}
-
 bool TokenManager::authenticate() {
     const std::string state = generate_state();
 
@@ -129,7 +118,7 @@ bool TokenManager::authenticate() {
 
     httplib::Server server;
 
-    server.Get("/", [&,this](const httplib::Request& req,
+    server.Get("/", [&](const httplib::Request& req,
                         httplib::Response& res) {
         if (!req.has_param("code") ||
             !req.has_param("state")) {
@@ -177,7 +166,7 @@ bool TokenManager::authenticate() {
 
     const std::string authorization_url =
         std::string("https://id.twitch.tv/oauth2/authorize") +
-        "?client_id=" + m_conf.get_client_id() +
+        "?client_id=" + m_conf.read_conf().client_id +
         "&redirect_uri=http%3A%2F%2Flocalhost%3A3000" +
         "&response_type=code" +
         "&scope=user%3Aread%3Achat" +
@@ -210,8 +199,8 @@ bool TokenManager::authenticate() {
     httplib::Client client("https://id.twitch.tv");
 
     httplib::Params params = {
-        {"client_id", m_conf.get_client_id()},
-        {"client_secret", m_conf.get_client_secret()},
+        {"client_id", m_conf.read_conf().client_id },
+        {"client_secret", m_conf.read_conf().client_secret },
         {"code", authorization_code},
         {"grant_type", "authorization_code"},
         {"redirect_uri", c_redirect_uri}
@@ -226,9 +215,9 @@ bool TokenManager::authenticate() {
 
     std::cout << "Authentication successful!" << std::endl;
 
-    m_access_token = data.at("access_token").get<std::string>();
-    m_conf.set_refresh_token(m_refresh_token = data.at("refresh_token").get<std::string>());
-    m_expires_in = data.at("expires_in").get<int>();
+    m_conf.write_cache().access_token = data.at("access_token").get<std::string>();
+    m_conf.write_cache().refresh_token = data.at("refresh_token").get<std::string>();
+    //m_expires_in = data.at("expires_in").get<int>();
 
     return true;
 }
@@ -237,10 +226,10 @@ bool TokenManager::try_refresh() {
     httplib::Client client("https://id.twitch.tv");
 
     httplib::Params params = {
-        {"client_id", m_conf.get_client_id()},
-        {"client_secret", m_conf.get_client_secret()},
+        {"client_id", m_conf.read_conf().client_id },
+        {"client_secret", m_conf.read_conf().client_secret },
         {"grant_type", "refresh_token"},
-        {"refresh_token", m_conf.get_refresh_token()}
+        {"refresh_token", m_conf.read_cache().refresh_token }
     };
 
     auto response = client.Post("/oauth2/token", params);
@@ -253,9 +242,9 @@ bool TokenManager::try_refresh() {
 
     const auto data = nlohmann::json::parse(response->body);
 
-    m_access_token = data.at("access_token").get<std::string>();
-    m_conf.set_refresh_token(m_refresh_token = data.at("refresh_token").get<std::string>());
-    m_expires_in = data.at("expires_in").get<int>();
+    m_conf.write_cache().access_token = data.at("access_token").get<std::string>();
+    m_conf.write_cache().refresh_token = data.at("refresh_token").get<std::string>();
+    //m_expires_in = data.at("expires_in").get<int>();
 
     return true;
 }

@@ -4,11 +4,12 @@
 
 extern bool check_response(const httplib::Result& response, int expected_status, const std::string& operation);
 
-WebSocket::WebSocket(TokenManager& mng, const Configuration& cfg) :
-    m_mng(mng),
-    m_cfg(cfg),
-    m_ws(std::make_unique<httplib::ws::WebSocketClient>("wss://eventsub.wss.twitch.tv/ws"))
-{}
+WebSocket::WebSocket(const Configuration& cfg) :
+    m_conf(cfg),
+    m_ws(std::make_unique<httplib::ws::WebSocketClient>(c_twitch_ws))
+{
+    m_ws->set_read_timeout(std::chrono::milliseconds(500));
+}
 
 bool WebSocket::connect() {
     if (const auto res = m_ws->connect(); !res) {
@@ -22,6 +23,7 @@ bool WebSocket::connect() {
 
 bool WebSocket::reconnect(const std::string& redir) {
     m_ws = std::make_unique<httplib::ws::WebSocketClient>(redir);
+    m_ws->set_read_timeout(std::chrono::milliseconds(500));
     return connect();
 }
 
@@ -33,8 +35,8 @@ bool WebSocket::subscribe(const std::string& session_id) {
     httplib::Client client("https://api.twitch.tv");
 
     httplib::Headers headers = {
-        {"Client-ID", m_cfg.get_client_id()},
-        {"Authorization", "Bearer " + m_mng.get_token()},
+        {"Client-ID", m_conf.read_conf().client_id },
+        {"Authorization", "Bearer " + m_conf.read_cache().access_token },
         {"Content-Type", "application/json"}
     };
 
@@ -42,8 +44,8 @@ bool WebSocket::subscribe(const std::string& session_id) {
         {"type", "channel.chat.message"},
         {"version", "1"},
         {"condition", {
-            {"broadcaster_user_id", m_cfg.get_channel_id()},
-            {"user_id", m_cfg.get_self_id()}
+            {"broadcaster_user_id", m_conf.read_cache().channel_id },
+            {"user_id", m_conf.read_cache().self_id }
         }},
         {"transport", {
             {"method", "websocket"},

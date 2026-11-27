@@ -1,15 +1,16 @@
 #pragma once
 
 #include "configuration.hpp"
-#include "token_manager.hpp"
 
 #include <httplib.h>
 
 #include <memory>
 
+constexpr char c_twitch_ws[] = "wss://eventsub.wss.twitch.tv/ws";
+
 class WebSocket {
 public:
-    WebSocket(TokenManager& mng, const Configuration& cfg);
+    WebSocket(const Configuration& cfg);
 
     bool connect();
     bool reconnect(const std::string& redir);
@@ -20,8 +21,7 @@ public:
     bool is_open() const;
     operator bool() const;
 private:
-    TokenManager& m_mng;
-    const Configuration& m_cfg;
+    const Configuration& m_conf;
     std::unique_ptr<httplib::ws::WebSocketClient> m_ws;
     bool m_good = false;
 };
