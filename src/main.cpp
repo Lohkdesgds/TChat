@@ -1,3 +1,10 @@
+
+
+#define SDL_MAIN_USE_CALLBACKS 1
+
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
 #include "configuration.hpp"
 #include "token_manager.hpp"
 #include "websocket.hpp"
@@ -7,10 +14,48 @@
 
 #include <atomic>
 #include <thread>
+#include <memory>
 
-int main()
-{
-    Display disp;
+void ws_async(Display& disp);
+
+struct Core {
+    std::unique_ptr<Display> disp;
+    std::thread ws_thread;
+};
+
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
+
+    Core* core = new Core();
+    *appstate = (void*)core;
+
+    core->disp = std::make_unique<Display>();
+    core->ws_thread = std::thread([core]{ ws_async(*core->disp); });
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    Core& core = *((Core*)appstate);
+    return core.disp->handle(*event);
+}
+
+SDL_AppResult SDL_AppIterate(void *appstate) {
+    Core& core = *((Core*)appstate);
+    return core.disp->draw();
+}
+
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+    (void)result;
+    Core& core = *((Core*)appstate);
+    core.disp->destroy(); // be sure
+    core.ws_thread.join();
+
+    delete ((Core*)appstate);
+}
+
+
+void ws_async(Display& disp) {
 
     while(!disp.is_closed()) {
         disp.push(Display::message{"SYSTEM", "Starting...", "#0dff00"});
@@ -23,11 +68,11 @@ int main()
 
             while(conf.read_conf().client_id.empty()) {
                 conf.write_conf().client_id = disp.put_request("Give an Twitch App Client ID:");
-                if (disp.is_closed()) return 0;
+                if (disp.is_closed()) return;
             }
             while(conf.read_conf().client_secret.empty()) {
                 conf.write_conf().client_secret = disp.put_request("Give an Twitch App Client Secret:");
-                if (disp.is_closed()) return 0;
+                if (disp.is_closed()) return;
             }
         }
 
@@ -40,7 +85,7 @@ int main()
         
         while(conf.read_cache().channel_name.empty()) {
             conf.write_cache().channel_name = disp.put_request("What channel to connect?");
-            if (disp.is_closed()) return 0;
+            if (disp.is_closed()) return;
         }
 
         disp.push(Display::message{"SYSTEM", "Authenticating and fetching...", "#0dff00"});
@@ -106,7 +151,7 @@ int main()
         for (bool keep_ws = true; keep_ws && ws.is_open() && !disp.is_closed();) {
             if (disp.has_touched()) {
                 std::string new_channel = disp.put_request("Connect to something else?", conf.read_cache().channel_name);
-                if (disp.is_closed()) return 0;
+                if (disp.is_closed()) return;
                 if (new_channel.size() > 0 && new_channel != conf.read_cache().channel_name) {
                     conf.write_cache().channel_name = new_channel;
                     disp.push(Display::message{"SYSTEM", "Restarting session...", "#0dff00"});

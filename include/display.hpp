@@ -33,8 +33,12 @@ public:
     void push(message&& msg);
 
     bool is_closed() const;
+    void destroy();
 
     bool has_touched();
+
+    SDL_AppResult draw();
+    SDL_AppResult handle(SDL_Event& ev);
 private:
     void show_kb();
     void hide_kb();
@@ -42,18 +46,12 @@ private:
     void setup_self();
     void destroy_self();
 
-    void render();
-    bool handle();
-
     SDL_Point get_window_size();
     SDL_Point get_text_size(std::string_view str);
     void draw_text(std::string_view str, float x, float y, SDL_Color clr, int max_w);
 
-    void _async();
-
     const b::EmbedInternal::EmbeddedFile m_ttf_src;
 
-    std::thread m_thr_renderer;
     SDL_Renderer* m_rend{};
     SDL_Window* m_wind{};
 
